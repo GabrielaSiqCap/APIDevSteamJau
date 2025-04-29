@@ -84,6 +84,7 @@ namespace APIDevSteamJau.Controllers
             return CreatedAtAction("GetCupomCarrinho", new { id = cupomCarrinho.CupomCarrinhoId }, cupomCarrinho);
         }
 
+
         // DELETE: api/CuponsCarrinhos/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteCupomCarrinho(Guid id)
@@ -104,5 +105,65 @@ namespace APIDevSteamJau.Controllers
         {
             return _context.CupomCarrinho.Any(e => e.CupomCarrinhoId == id);
         }
+
+        [HttpPost]
+        [Route("AplicarCupom/{id}")]
+        public async Task<IActionResult> AplicarCupom(Guid carrinhoId, Guid cupomId)
+        {
+            // Verifica se o carrinho existe
+            var carrinho = await _context.Carrinhos
+                .Include(c => c.ItensCarrinhos)
+                .ThenInclude(ic => ic.Jogo)
+                .FirstOrDefaultAsync(c => c.CarrinhoId == carrinhoId);
+
+            if (carrinho == null)
+                return NotFound("Carrinho não encontrado.");
+
+            // Verifica se o cupom existe
+            var cupom = await _context.Cupom.FirstOrDefaultAsync(c => c.CupomId == cupomId);
+            if (cupom == null)
+                return NotFound("Cupom não encontrado.");
+
+            // Verifica se o cupom é válido e está ativo
+            if (!cupom.Ativo.HasValue || !cupom.Ativo.Value)
+                return BadRequest("Cupom inativo.");
+            if (cupom.DataValidade.HasValue && cupom.DataValidade.Value < DateTime.UtcNow)
+                return BadRequest("Cupom expirado.");
+
+            // Calcula o valor total do carrinho
+            decimal valorTotal = carrinho.ItensCarrinhos.Sum(item => item.Quantidade * item.ValorUnitario);
+
+            // Aplica o desconto do cupom
+            decimal desconto = (valorTotal * cupom.Desconto) / 100;
+            decimal valorFinal = valorTotal - desconto;
+
+            // Atualiza o valor total do carrinho
+            carrinho.ValorTotal = valorFinal;
+
+            // Registra a aplicação do cupom no CupomCarrinho
+            var cupomCarrinho = new CupomCarrinho
+            {
+                CupomCarrinhoId = Guid.NewGuid(),
+                CarrinhoId = carrinho.CarrinhoId,
+                CupomId = cupom.CupomId,
+                DataAplicacao = DateTime.UtcNow
+            };
+            _context.CupomCarrinho.Add(cupomCarrinho);
+
+            // Salva as alterações no banco de dados
+            _context.Entry(carrinho).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                ValorOriginal = valorTotal,
+                Desconto = desconto,
+                ValorFinal = valorFinal,
+                Mensagem = "Cupom aplicado com sucesso!"
+            });
+        }
+
+
+
     }
 }

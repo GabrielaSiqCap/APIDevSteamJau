@@ -9,5 +9,6 @@
         public bool? Finalizado { get; set; } // Ver se realmente o carrinho foi finalizado
         public DateTime? DataFinalizacao { get; set; } // Data de finalização do carrinho
         public decimal ValorTotal { get; set; } // Valor total do carrinho
+        public object ItensCarrinhos { get; internal set; }
     }
 }
